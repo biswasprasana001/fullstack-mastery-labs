@@ -1,0 +1,106 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# INTERVIEW Q: "Outline a GitHub Actions CI pipeline — lint, test, build."
+# INTERVIEW Q: "How do you inject secrets without leaking them in logs?"
+# INTERVIEW Q: "How do you run parallel jobs with a Postgres service container?"
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Job 1: Lint + Type-check ──────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          # INTERVIEW Q: "How does dependency caching work in GitHub Actions?"
+          # cache: 'npm' caches ~/.npm between runs. If package-lock.json
+          # didn't change, the restore step skips npm install entirely.
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  # ─── Job 2: Unit + Integration tests (parallel with lint) ──────────────────
+  test:
+    runs-on: ubuntu-latest
+
+    # INTERVIEW Q: "How do you run tests with a real Postgres container?"
+    # Service containers run alongside the job in Docker.
+    # They start before your steps and are accessible via their service name.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: taskflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # INTERVIEW Q: "How do you inject secrets without leaking them in logs?"
+      # GitHub masks secrets in logs — they appear as *** even if echo'd.
+      # NEVER hardcode secrets in workflow files. Use ${{ secrets.NAME }}.
+      # Secrets are set in: GitHub repo → Settings → Secrets → Actions.
+      - run: npm test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskflow_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}       # from GitHub secrets
+          REFRESH_SECRET: ${{ secrets.REFRESH_SECRET }}
+
+  # ─── Job 3: Build (depends on lint + test) ────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]  # only runs if BOTH lint and test pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # Build the Docker image (validate the Dockerfile is valid)
+      - run: docker build -t taskflow:${{ github.sha }} .
+
+      # In a real CD pipeline you'd push to a registry here:
+      # - run: docker push ghcr.io/org/taskflow:${{ github.sha }}
+      # Then trigger a deploy (k8s rollout, ECS task update, etc.)
+

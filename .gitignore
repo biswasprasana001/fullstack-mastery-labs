@@ -1,0 +1,13 @@
+# Root-level ignore
+docs/
+
+# Dependencies and build outputs
+node_modules/
+dist/
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log

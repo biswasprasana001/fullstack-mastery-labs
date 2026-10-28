@@ -1,0 +1,170 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   INTERVIEW Q: "Flexbox vs CSS Grid — when do you pick which?"
+   INTERVIEW Q: "What creates a stacking context? Why does z-index sometimes fail?"
+   INTERVIEW Q: "How is CSS specificity calculated?"
+   INTERVIEW Q: "What does flex: 1 expand to?"
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ─── CSS Specificity ───────────────────────────────────────────────────────
+   Specificity is a 3-part score: (ID, Class/Attr/Pseudo-class, Element)
+   Higher number = higher specificity = wins the cascade.
+
+   #header          → (1,0,0)  = 100  ← wins
+   .nav .item       → (0,2,0)  = 020
+   a:hover          → (0,1,1)  = 011
+   div              → (0,0,1)  = 001  ← loses
+
+   !important beats everything — but creates "specificity wars", avoid it.
+   Instead: keep specificity flat with BEM, CSS Modules, or Tailwind.
+
+   box-sizing: border-box — makes width/height INCLUDE padding and border.
+   Default (content-box) ADDS padding on top → unexpected layout breaks.
+*/
+
+/* Global reset — specificity: (0,0,1) each */
+*,
+*::before,
+*::after {
+  box-sizing: border-box; /* Include padding+border in element dimensions */
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --sidebar-width: 240px;
+  --header-height: 56px;
+  --color-primary: #4f46e5;
+  --color-bg: #f9fafb;
+  --color-surface: #ffffff;
+  --color-text: #111827;
+  --color-muted: #6b7280;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.12);
+}
+
+/* ─── App Shell — CSS Grid ────────────────────────────────────────────────────
+   INTERVIEW Q: "When do you use Grid vs Flexbox?"
+
+   Grid:    2D layout (rows AND columns simultaneously). Best for the PAGE shell —
+            header, sidebar, main, footer all positioned at once.
+
+   Flexbox: 1D layout (row OR column). Best for COMPONENTS — nav items, button
+            groups, card contents — where items flow in one direction.
+
+   "flex: 1" expands to: flex-grow: 1; flex-shrink: 1; flex-basis: 0%
+     flex-grow: 1   → take up remaining space proportionally
+     flex-shrink: 1 → shrink if there's not enough room
+     flex-basis: 0% → start from zero before distributing space
+*/
+
+.app-grid {
+  display: grid;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar main";
+  grid-template-columns: var(--sidebar-width) 1fr; /* sidebar fixed, main grows */
+  grid-template-rows: var(--header-height) 1fr;
+  min-height: 100vh;
+}
+
+.app-grid.sidebar-collapsed {
+  grid-template-columns: 0 1fr; /* sidebar hidden — grid adapts instantly */
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar {
+  grid-area: sidebar;
+  background: var(--color-surface);
+  border-right: 1px solid #e5e7eb;
+  overflow: hidden; /* hides content when width → 0 */
+
+  /* Stacking context: position + z-index creates a new stacking context.
+     INTERVIEW Q: "What creates a stacking context, and why does z-index fail?"
+
+     A new stacking context is created by:
+       • position: relative/absolute/fixed + z-index != auto
+       • opacity < 1
+       • transform, filter, will-change
+       • isolation: isolate
+
+     z-index only competes within the SAME stacking context.
+     If the sidebar is inside a stacking context with z-index: 0, and the
+     modal is in another context with z-index: 0, neither can overlap the other
+     by setting a higher z-index inside their own context. */
+  position: relative;
+  z-index: 10;
+}
+
+/* ─── Header — Flexbox for 1D alignment ─────────────────────────────────────*/
+.header {
+  grid-area: header;
+  display: flex;
+  align-items: center;          /* center items on cross-axis (vertically) */
+  justify-content: space-between; /* push logo left, actions right */
+  padding: 0 1.5rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: var(--shadow);
+}
+
+.header__logo {
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--color-primary);
+}
+
+.header__actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+/* ─── Main content area ──────────────────────────────────────────────────────*/
+.main {
+  grid-area: main;
+  padding: 2rem;
+  background: var(--color-bg);
+  overflow-y: auto;
+}
+
+/* ─── Task list — Flexbox column ─────────────────────────────────────────────*/
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  list-style: none;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* ─── Card grid — CSS Grid for 2D card layout ───────────────────────────────
+   auto-fill: create as many columns as fit
+   minmax(280px, 1fr): each column is at least 280px, grows to fill space
+   No media queries needed — intrinsically responsive! */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+/* ─── Responsive: collapse sidebar on mobile ────────────────────────────────*/
+@media (max-width: 640px) {
+  .app-grid {
+    grid-template-areas:
+      "header"
+      "main";
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--header-height) 1fr;
+  }
+
+  .sidebar { display: none; }
+}
+

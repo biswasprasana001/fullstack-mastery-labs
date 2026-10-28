@@ -1,0 +1,77 @@
+version: "3.9"
+
+# INTERVIEW Q: "What is the difference between a Docker image and a container?"
+# Image:     Read-only template built from a Dockerfile. Like a class definition.
+# Container: A running instance of an image. Like an object instantiated from a class.
+#            Containers are ephemeral — data dies with them unless you use volumes.
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/taskflow
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKER: kafka:9092
+      JWT_SECRET: dev-secret-change-in-prod
+      REFRESH_SECRET: dev-refresh-change-in-prod
+      CLIENT_URL: http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: taskflow
+    volumes:
+      - pg_data:/var/lib/postgresql/data          # persistent volume — survives container restart
+      - ./src/server/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes  # AOF persistence
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Kafka (optional — app starts without it, consumer logs a warning)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    profiles: ["kafka"] # only starts with: docker-compose --profile kafka up
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    profiles: ["kafka"]
+
+volumes:
+  pg_data:
+  redis_data:
+
